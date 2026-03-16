@@ -19,7 +19,7 @@ import { savePngDataUrlToFile } from './utils/save';
 let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 
-const HOTKEY = 'CommandOrControl+Shift+A';
+const HOTKEY = 'CommandOrControl+Alt+A';
 
 function createTrayIcon(): NativeImage {
   const pngBase64 =
