@@ -1,0 +1,21 @@
+{
+  "name": "pinchclip",
+  "version": "1.0.0",
+  "description": "Cross-platform screenshot and annotation tool",
+  "main": "dist/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc && copyfiles -u 1 src/renderer/index.html src/renderer/styles.css dist",
+    "start": "electron .",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "copyfiles": "^2.4.1",
+    "electron": "^30.5.1",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.7.3"
+  }
+}

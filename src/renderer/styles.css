@@ -1,0 +1,103 @@
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.layer {
+  position: fixed;
+  inset: 0;
+}
+
+#selectionCanvas {
+  cursor: crosshair;
+}
+
+#annotationCanvas {
+  pointer-events: none;
+}
+
+.toolbar {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(20, 20, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  user-select: none;
+}
+
+.toolbar.hidden,
+.hidden {
+  display: none;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-btn {
+  min-width: 32px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 8px;
+}
+
+.toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.toolbar-btn.active {
+  border-color: #00d8ff;
+  box-shadow: 0 0 0 1px #00d8ff inset;
+}
+
+.color-btn {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  padding: 0;
+}
+
+.color-picker {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.action-btn {
+  font-size: 13px;
+}
+
+.text-input {
+  position: fixed;
+  z-index: 30;
+  min-width: 140px;
+  padding: 4px 6px;
+  border: 1px solid #00d8ff;
+  border-radius: 4px;
+  outline: none;
+  font-size: 20px;
+  background: rgba(0, 0, 0, 0.55);
+  color: white;
+}
