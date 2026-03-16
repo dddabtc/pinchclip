@@ -18,6 +18,7 @@ import { savePngDataUrlToFile } from './utils/save';
 
 let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let isQuitting = false;
 
 const HOTKEY = 'CommandOrControl+Alt+A';
 
@@ -59,6 +60,14 @@ function createOverlayWindow(): BrowserWindow {
 
   win.on('blur', () => {
     if (win.isVisible()) {
+      win.hide();
+    }
+  });
+
+  // Close to tray instead of quitting
+  win.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
       win.hide();
     }
   });
@@ -177,6 +186,10 @@ app.whenReady().then(() => {
       overlayWindow = createOverlayWindow();
     }
   });
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
 });
 
 app.on('will-quit', () => {
