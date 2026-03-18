@@ -5,7 +5,6 @@ import {
   Menu,
   nativeImage,
   type NativeImage,
-  type Event,
   globalShortcut,
   ipcMain,
   desktopCapturer,
@@ -16,6 +15,12 @@ import path from 'node:path';
 import { copyPngDataUrlToClipboard } from './utils/clipboard';
 import { savePngDataUrlToFile } from './utils/save';
 
+// --- Single instance lock ---
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+}
+
 let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -23,9 +28,33 @@ let isQuitting = false;
 const HOTKEY = 'CommandOrControl+Alt+A';
 
 function createTrayIcon(): NativeImage {
-  const pngBase64 =
-    'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAZElEQVR4AWNABmJkYGD4z8DAwMhABv///2fg4uJiYGBg+M8AA0YkRjQYGBj+M7A0NDSYGBgY/p8BGgYGBhYGBgaG/4zQ0FAwMDD8Z2BgYAAhWmA0GEMQ0QjGoA1Q3QfE0A0Qk0h0QhQAAAvYQv1Jm9LZAAAAAElFTkSuQmCC';
-  return nativeImage.createFromDataURL(`data:image/png;base64,${pngBase64}`);
+  // 32x32 RGBA icon – large enough for Windows 10 system tray
+  const size = 32;
+  const buf = Buffer.alloc(size * size * 4, 0);
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = size * 0.35;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const idx = (y * size + x) * 4;
+
+      const isRing = Math.abs(dist - r) < size * 0.09;
+      const isCross = dist < r * 0.6 && (Math.abs(dx) < size * 0.07 || Math.abs(dy) < size * 0.07);
+
+      if (isRing || isCross) {
+        buf[idx] = 0;      // R
+        buf[idx + 1] = 168; // G
+        buf[idx + 2] = 255; // B
+        buf[idx + 3] = 255; // A
+      }
+    }
+  }
+
+  return nativeImage.createFromBuffer(buf, { width: size, height: size });
 }
 
 function createOverlayWindow(): BrowserWindow {
@@ -175,6 +204,11 @@ function setupIpc(): void {
   });
 }
 
+app.on('second-instance', () => {
+  // If someone tries to launch a second instance, trigger capture in the existing one
+  void showCaptureOverlay();
+});
+
 app.whenReady().then(() => {
   overlayWindow = createOverlayWindow();
   createTray();
@@ -196,6 +230,6 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
 });
 
-app.on('window-all-closed', (event: Event) => {
-  event.preventDefault();
+app.on('window-all-closed', () => {
+  // Do nothing — keep the app running in the tray
 });
