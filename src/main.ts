@@ -176,16 +176,17 @@ async function captureWithDesktopCapturer(): Promise<NativeImage> {
 
 async function captureWithMacScreencapture(): Promise<NativeImage> {
   const tempPath = path.join(os.tmpdir(), `pinchclip-${process.pid}-${Date.now()}.png`);
-  const { x, y, width, height } = screen.getPrimaryDisplay().bounds;
-  const region = `${Math.round(x)},${Math.round(y)},${Math.round(width)},${Math.round(height)}`;
 
   try {
-    await execFileAsync('/usr/sbin/screencapture', ['-x', '-t', 'png', '-R', region, tempPath]);
+    // Capture the full display set. Region capture (-R) is unreliable across
+    // macOS display coordinate spaces and can fail with "could not create image
+    // from rect" on otherwise valid displays.
+    await execFileAsync('/usr/sbin/screencapture', ['-x', '-t', 'png', tempPath]);
     const png = await fs.readFile(tempPath);
     const image = nativeImage.createFromBuffer(png);
 
-    if (image.isEmpty()) {
-      throw new Error('macOS screencapture returned an empty image.');
+    if (image.isEmpty() || isProbablyBlankImage(image)) {
+      throw new Error('macOS screencapture returned an empty or blank image.');
     }
 
     return image;
@@ -195,23 +196,22 @@ async function captureWithMacScreencapture(): Promise<NativeImage> {
 }
 
 async function capturePrimaryScreenDataUrl(): Promise<string> {
-  const electronImage = await captureWithDesktopCapturer();
+  if (process.platform === 'darwin') {
+    try {
+      return (await captureWithMacScreencapture()).toDataURL();
+    } catch (macError) {
+      const electronImage = await captureWithDesktopCapturer();
+      if (!isProbablyBlankImage(electronImage)) {
+        return electronImage.toDataURL();
+      }
 
-  if (process.platform !== 'darwin' || !isProbablyBlankImage(electronImage)) {
-    return electronImage.toDataURL();
+      throw new ScreenCapturePermissionError(
+        'PinchClip needs macOS Screen Recording permission before it can capture the screen.'
+      );
+    }
   }
 
-  // On macOS, desktopCapturer can return a black frame when Screen Recording
-  // permission is missing or stale. The native screencapture tool gives a real
-  // system prompt and is more reliable for unsigned/local builds.
-  try {
-    const nativeMacImage = await captureWithMacScreencapture();
-    return nativeMacImage.toDataURL();
-  } catch (error) {
-    throw new ScreenCapturePermissionError(
-      'PinchClip needs macOS Screen Recording permission before it can capture the screen.'
-    );
-  }
+  return (await captureWithDesktopCapturer()).toDataURL();
 }
 
 async function showScreenRecordingHelp(): Promise<void> {
