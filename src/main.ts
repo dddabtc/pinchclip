@@ -9,11 +9,18 @@ import {
   ipcMain,
   desktopCapturer,
   screen,
-  shell
+  shell,
+  dialog
 } from 'electron';
 import path from 'node:path';
+import os from 'node:os';
+import { promises as fs } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { copyPngDataUrlToClipboard } from './utils/clipboard';
 import { savePngDataUrlToFile } from './utils/save';
+
+const execFileAsync = promisify(execFile);
 
 // --- Single instance lock ---
 const gotLock = app.requestSingleInstanceLock();
@@ -24,6 +31,13 @@ if (!gotLock) {
 let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+
+class ScreenCapturePermissionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ScreenCapturePermissionError';
+  }
+}
 
 const HOTKEY = 'CommandOrControl+Alt+A';
 
@@ -104,7 +118,38 @@ function createOverlayWindow(): BrowserWindow {
   return win;
 }
 
-async function capturePrimaryScreenDataUrl(): Promise<string> {
+function isProbablyBlankImage(image: NativeImage): boolean {
+  if (image.isEmpty()) return true;
+
+  const bitmap = image.getBitmap();
+  if (bitmap.length === 0) return true;
+
+  // Electron returns BGRA bytes. Sampling is enough to detect the macOS
+  // Screen Recording failure mode, where desktopCapturer returns a solid
+  // black frame instead of the real desktop.
+  const stride = 4;
+  const pixelCount = Math.floor(bitmap.length / stride);
+  const sampleEvery = Math.max(1, Math.floor(pixelCount / 4000));
+  let sampled = 0;
+  let nonBlack = 0;
+
+  for (let pixel = 0; pixel < pixelCount; pixel += sampleEvery) {
+    const offset = pixel * stride;
+    const b = bitmap[offset] ?? 0;
+    const g = bitmap[offset + 1] ?? 0;
+    const r = bitmap[offset + 2] ?? 0;
+    const a = bitmap[offset + 3] ?? 0;
+
+    sampled += 1;
+    if (a > 0 && (r > 8 || g > 8 || b > 8)) {
+      nonBlack += 1;
+    }
+  }
+
+  return sampled > 0 && nonBlack / sampled < 0.002;
+}
+
+async function captureWithDesktopCapturer(): Promise<NativeImage> {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.size;
 
@@ -126,7 +171,64 @@ async function capturePrimaryScreenDataUrl(): Promise<string> {
     throw new Error('Unable to capture screen source.');
   }
 
-  return source.thumbnail.toDataURL();
+  return source.thumbnail;
+}
+
+async function captureWithMacScreencapture(): Promise<NativeImage> {
+  const tempPath = path.join(os.tmpdir(), `pinchclip-${process.pid}-${Date.now()}.png`);
+  const { x, y, width, height } = screen.getPrimaryDisplay().bounds;
+  const region = `${Math.round(x)},${Math.round(y)},${Math.round(width)},${Math.round(height)}`;
+
+  try {
+    await execFileAsync('/usr/sbin/screencapture', ['-x', '-t', 'png', '-R', region, tempPath]);
+    const png = await fs.readFile(tempPath);
+    const image = nativeImage.createFromBuffer(png);
+
+    if (image.isEmpty()) {
+      throw new Error('macOS screencapture returned an empty image.');
+    }
+
+    return image;
+  } finally {
+    await fs.rm(tempPath, { force: true }).catch(() => undefined);
+  }
+}
+
+async function capturePrimaryScreenDataUrl(): Promise<string> {
+  const electronImage = await captureWithDesktopCapturer();
+
+  if (process.platform !== 'darwin' || !isProbablyBlankImage(electronImage)) {
+    return electronImage.toDataURL();
+  }
+
+  // On macOS, desktopCapturer can return a black frame when Screen Recording
+  // permission is missing or stale. The native screencapture tool gives a real
+  // system prompt and is more reliable for unsigned/local builds.
+  try {
+    const nativeMacImage = await captureWithMacScreencapture();
+    return nativeMacImage.toDataURL();
+  } catch (error) {
+    throw new ScreenCapturePermissionError(
+      'PinchClip needs macOS Screen Recording permission before it can capture the screen.'
+    );
+  }
+}
+
+async function showScreenRecordingHelp(): Promise<void> {
+  const result = await dialog.showMessageBox({
+    type: 'warning',
+    title: 'Screen Recording Permission Required',
+    message: 'PinchClip needs Screen Recording permission to capture your Mac screen.',
+    detail:
+      'Open System Settings → Privacy & Security → Screen Recording, enable PinchClip, then quit and reopen the app.',
+    buttons: ['Open Settings', 'OK'],
+    defaultId: 0,
+    cancelId: 1
+  });
+
+  if (result.response === 0) {
+    await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
+  }
 }
 
 async function showCaptureOverlay(): Promise<void> {
@@ -139,6 +241,9 @@ async function showCaptureOverlay(): Promise<void> {
     overlayWindow.webContents.send('screen-captured', dataUrl);
   } catch (error) {
     console.error('Failed to capture screen:', error);
+    if (error instanceof ScreenCapturePermissionError) {
+      await showScreenRecordingHelp();
+    }
   }
 }
 

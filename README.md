@@ -32,6 +32,14 @@ npm run build
 npm start
 ```
 
+## macOS Permission
+
+On first capture, macOS may require **Screen Recording** permission. If PinchClip shows a permission dialog or captures a black screen:
+
+1. Open **System Settings → Privacy & Security → Screen Recording**
+2. Enable **PinchClip**
+3. Quit and reopen PinchClip
+
 ## Usage
 
 1. Launch PinchClip — it sits in your system tray

@@ -39,12 +39,21 @@ const toolbar = new Toolbar({
   onCancel: () => resetAndHide()
 });
 
+let displayScaleX = 1;
+let displayScaleY = 1;
+
 function setCanvasSizes(width: number, height: number): void {
+  const cssWidth = window.innerWidth || width;
+  const cssHeight = window.innerHeight || height;
+
+  displayScaleX = width / cssWidth;
+  displayScaleY = height / cssHeight;
+
   [screenshotCanvas, selectionCanvas, annotationCanvas].forEach((canvas) => {
     canvas.width = width;
     canvas.height = height;
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
+    canvas.style.width = `${cssWidth}px`;
+    canvas.style.height = `${cssHeight}px`;
   });
 
   annotationEngine.resize(width, height);
@@ -70,7 +79,17 @@ function drawSelectionOverlay(): void {
 }
 
 function getMousePoint(event: MouseEvent): Point {
-  return { x: event.clientX, y: event.clientY };
+  return {
+    x: event.clientX * displayScaleX,
+    y: event.clientY * displayScaleY
+  };
+}
+
+function toCssPoint(point: Point): Point {
+  return {
+    x: point.x / displayScaleX,
+    y: point.y / displayScaleY
+  };
 }
 
 function isInsideSelection(point: Point): boolean {
@@ -115,7 +134,9 @@ function finalizeSelection(): void {
   mode = 'annotating';
   annotationCanvas.style.pointerEvents = 'auto';
   annotationCanvas.style.cursor = 'crosshair';
-  toolbar.showAt(rect.x, rect.y + rect.height + 10);
+
+  const cssTopLeft = toCssPoint({ x: rect.x, y: rect.y + rect.height });
+  toolbar.showAt(cssTopLeft.x, cssTopLeft.y + 10);
 }
 
 function mergeSelectedRegionToDataUrl(): string | null {
@@ -197,9 +218,10 @@ function beginAnnotation(event: MouseEvent): void {
   if (!isInsideSelection(point)) return;
 
   if (currentTool === 'text') {
+    const cssPoint = toCssPoint(point);
     textInput.value = '';
-    textInput.style.left = `${point.x}px`;
-    textInput.style.top = `${point.y}px`;
+    textInput.style.left = `${cssPoint.x}px`;
+    textInput.style.top = `${cssPoint.y}px`;
     textInput.classList.remove('hidden');
     textInput.focus();
     textInput.onblur = () => {
