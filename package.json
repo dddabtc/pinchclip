@@ -8,6 +8,7 @@
   "scripts": {
     "build": "tsc && copyfiles -u 1 src/renderer/index.html src/renderer/styles.css dist",
     "start": "electron .",
+    "test": "npm run build && node --test",
     "dist": "npm run build && electron-builder"
   },
   "dependencies": {},
