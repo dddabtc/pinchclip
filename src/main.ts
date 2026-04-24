@@ -19,6 +19,12 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { copyPngDataUrlToClipboard } from './utils/clipboard';
 import { savePngDataUrlToFile } from './utils/save';
+import {
+  getAlwaysOnTopLevel,
+  getOverlayWindowBounds,
+  selectPrimaryScreenSource,
+  shouldUseNativeFullscreen
+} from './main/platform';
 
 const execFileAsync = promisify(execFile);
 
@@ -29,6 +35,7 @@ if (!gotLock) {
 }
 
 let overlayWindow: BrowserWindow | null = null;
+let overlayReadyPromise: Promise<void> | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 
@@ -72,13 +79,14 @@ function createTrayIcon(): NativeImage {
 }
 
 function createOverlayWindow(): BrowserWindow {
-  const { width, height } = screen.getPrimaryDisplay().bounds;
+  const display = screen.getPrimaryDisplay();
+  const bounds = getOverlayWindowBounds(display);
 
   const win = new BrowserWindow({
-    x: 0,
-    y: 0,
-    width,
-    height,
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
     transparent: true,
     frame: false,
     movable: false,
@@ -97,9 +105,15 @@ function createOverlayWindow(): BrowserWindow {
     }
   });
 
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  win.setFullScreen(true);
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  if (shouldUseNativeFullscreen(process.platform)) {
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    win.setFullScreen(true);
+  } else {
+    win.setBounds(bounds);
+    win.setAlwaysOnTop(true, getAlwaysOnTopLevel(process.platform));
+  }
+
+  overlayReadyPromise = win.loadFile(path.join(__dirname, 'renderer', 'index.html')).then(() => undefined);
 
   win.on('blur', () => {
     if (win.isVisible()) {
@@ -162,10 +176,7 @@ async function captureWithDesktopCapturer(): Promise<NativeImage> {
     fetchWindowIcons: false
   });
 
-  const source =
-    sources.find((s) => s.display_id === String(primaryDisplay.id)) ??
-    sources.find((s) => s.name.toLowerCase().includes('entire')) ??
-    sources[0];
+  const source = selectPrimaryScreenSource(sources, primaryDisplay);
 
   if (!source) {
     throw new Error('Unable to capture screen source.');
@@ -236,6 +247,7 @@ async function showCaptureOverlay(): Promise<void> {
 
   try {
     const dataUrl = await capturePrimaryScreenDataUrl();
+    await overlayReadyPromise;
     overlayWindow.show();
     overlayWindow.focus();
     overlayWindow.webContents.send('screen-captured', dataUrl);
@@ -253,7 +265,22 @@ function registerGlobalHotkey(): void {
   });
 
   if (!ok) {
-    console.warn(`Failed to register global shortcut: ${HOTKEY}`);
+    const message = `Failed to register global shortcut: ${HOTKEY}`;
+    console.warn(message);
+
+    if (process.platform === 'win32' && tray) {
+      tray.displayBalloon({
+        title: 'PinchClip hotkey unavailable',
+        content: 'Ctrl+Alt+A is already used by another app. Use the tray menu to capture, or free that shortcut.'
+      });
+    } else {
+      void dialog.showMessageBox({
+        type: 'warning',
+        title: 'PinchClip hotkey unavailable',
+        message,
+        detail: 'Use the tray menu to capture, or free that shortcut and restart PinchClip.'
+      });
+    }
   }
 }
 

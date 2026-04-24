@@ -11,9 +11,13 @@ mac:
   category: public.app-category.productivity
 win:
   icon: build/icon.ico
+  artifactName: ${productName}-${version}-${arch}.${ext}
   target:
     - nsis
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: PinchClip
